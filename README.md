@@ -11,3 +11,5 @@ a simple UCI chess engine in std::C++17
 - requires a system supporting Intel SSE4 POPCNT CPU instruction set
 - playing strength ~1950 elo
 
+
+a clean and stable starting point for future development...
