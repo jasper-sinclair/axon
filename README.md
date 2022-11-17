@@ -6,7 +6,7 @@ a minimalist UCI chess engine in std::C++17
 - transposition table
 - magic bitboard move generation
 - incorporating core engine components only
-- minimal eval: material & piece square tables
+- basic eval: material & piece square tables
 - transposition table
 - current size 72 KB
 - optimized & stable
