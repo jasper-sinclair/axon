@@ -1,14 +1,14 @@
 # axon
 a simple UCI chess engine in std::C++17
 
-- magic bitboard move generation
 - alpha-beta search
 - basic move ordering
 - transposition table
-- minimal evaluation: material & piece square tables
+- magic bitboard move generation
 - incorporating core engine components only
+- minimal eval: material & piece square tables
 - current size 72 KB
 - optimized & stable
 - accurate perft
-- requires a system supporting Intel SSE4 POPCNT CPU instruction set
-- playing strength ~1950 elo
+- requires a CPU w/ SSE4 POPCNT instruction set
+- playing strength ~1900 elo
