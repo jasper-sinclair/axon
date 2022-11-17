@@ -1,8 +1,26 @@
 #pragma once
+#include <string>
+
+#pragma warning(disable: 4244)
 
 const std::string eng_name{ "Axon" };
 const std::string version { "0.1" };
 const std::string platform{ "x64" };
+
+constexpr int max_depth { 64 };
+constexpr int max_hash{ 1024 };
+constexpr int max_period { 1024 };
+constexpr int max_movegen { 256 };
+constexpr int max_movetime{ 0x7fffffff };
+
+constexpr uint8_t castleright[]{ 0x1, 0x4, 0x10, 0x40 };
+const std::string startpos{ "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 0" };
+
+inline uint16_t to_sq1(const uint16_t move) { return move & 0x3fU; }
+inline uint16_t to_sq2(const uint16_t move) { return (move & 0xfc0U) >> 6; }
+inline uint8_t to_flag(const uint16_t move) { return static_cast<uint8_t>(move >> 12); }
+inline uint64_t shift(const uint64_t b, const int shift) { return b << shift | b >> (64 - shift); }
+inline uint16_t encode(const uint32_t from, const uint32_t to, const int flag) { return static_cast<uint16_t>(from | to << 6 | flag << 12); }
 
 enum square
 {
@@ -85,7 +103,7 @@ enum scoretype
 	ndef = 11000
 };
 
-enum slider
+enum slide
 {
 	rook,
 	bishop
