@@ -9,7 +9,13 @@ namespace
 	constexpr int phase_max{24};
 	int phase_weight[phase_max + 1];
 	constexpr int negate[]{1, -1};
-	constexpr int tempo_bonus[]{ eval::tempo_bonus_white, 0 };
+	constexpr int tempo_bonus[]{eval::tempo_bonus_white, 0};
+}
+
+void eval::init_phases()
+{
+	for (int i{0}; i <= phase_max; ++i)
+		phase_weight[i] = i * 256 / phase_max;
 }
 
 int eval::material(const board& pos)
@@ -51,13 +57,13 @@ int eval::piece_squares(const board& pos)
 
 void eval::pieces(board& pos, int sum[][2])
 {
-	const int old_turn{ pos.turn };
+	const int old_turn{pos.turn};
 
-	for (int col{ white }; col <= black; ++col)
+	for (int col{white}; col <= black; ++col)
 	{
 		pos.turn = col;
 
-		uint64_t pieces{ pos.side[col] & pos.pieces[bishops] };
+		uint64_t pieces{pos.side[col] & pos.pieces[bishops]};
 		while (pieces)
 		{
 			if (pieces & (pieces - 1))
@@ -71,15 +77,9 @@ void eval::pieces(board& pos, int sum[][2])
 	pos.turn = old_turn;
 }
 
-void eval::init_phases()
-{
-	for (int i{ 0 }; i <= phase_max; ++i)
-		phase_weight[i] = i * 256 / phase_max;
-}
-
 int eval::position(board& pos)
 {
-	int sum[2][2]{ };
+	int sum[2][2]{};
 	pieces(pos, sum);
 	sum[mg][white] += tempo_bonus[pos.turn];
 	return (material(pos) + piece_squares(pos)) * negate[pos.turn];

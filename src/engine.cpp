@@ -10,6 +10,25 @@
 #include "random.h"
 #include "search.h"
 
+uint16_t engine::alphabeta(board& pos, timemanager& chrono) { return search::idd(pos, chrono); }
+
+void engine::init_hash(const int size) { hash::tt_create(size); }
+
+void engine::init_eval() { eval::init_phases(); }
+
+void engine::init_movegen()
+{
+	movegen::init();
+	magic::init_seeds();
+	magic::init_magic();
+	magic::init_ray(rook);
+	magic::init_ray(bishop);
+	magic::init_king();
+	magic::init_knight();
+}
+
+void engine::init_rand() { srand(static_cast<uint16_t>(random_u64_number())); }
+
 void engine::new_game(board& pos, timemanager& chrono)
 {
 	game::reset();
@@ -44,19 +63,3 @@ void engine::parse_fen(board& pos, timemanager& chrono, const std::string& fen)
 	hash::tt_clear();
 	pos.parse_fen(fen);
 }
-
-void engine::init_movegen()
-{
-	movegen::init();
-	magic::init_seeds();
-	magic::init_magic();
-	magic::init_ray(rook);
-	magic::init_ray(bishop);
-	magic::init_king();
-	magic::init_knight();
-}
-
-void engine::init_eval() { eval::init_phases(); }
-void engine::init_rand() { srand(static_cast<uint16_t>(random_u64_number())); }
-void engine::init_hash(const int size) { hash::tt_create(size); }
-uint16_t engine::alphabeta(board& pos, timemanager& chrono) { return search::idd(pos, chrono); }

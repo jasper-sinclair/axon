@@ -168,28 +168,9 @@ void uci::loop()
 	stop(searching);
 }
 
-void uci::uci()
-{
-	std::cout
-		<< "id name" << " " << eng_name << " " << version << " " << platform << std::endl
-		<< "id author Jasper Sinclair" << std::endl << std::endl
-		<< "option name Hash type spin default " << engine::hash_size << " min 1 max " << max_hash << std::endl;
-	std::cout
-		<< "uciok" << std::endl;
-}
-
 void uci::isready()
 {
 	std::cout << "readyok" << std::endl;
-}
-
-void uci::stop(std::thread& searching)
-{
-	if (searching.joinable())
-	{
-		engine::stop = true;
-		searching.join();
-	}
 }
 
 void uci::search(board* pos, timemanager* chrono)
@@ -211,3 +192,21 @@ void uci::search(board* pos, timemanager* chrono)
 		<< std::endl;
 }
 
+void uci::stop(std::thread& searching)
+{
+	if (searching.joinable())
+	{
+		engine::stop = true;
+		searching.join();
+	}
+}
+
+void uci::uci()
+{
+	std::cout
+		<< "id name" << " " << eng_name << " " << version << " " << platform << std::endl
+		<< "id author Jasper Sinclair" << std::endl << std::endl
+		<< "option name Hash type spin default " << engine::hash_size << " min 1 max " << max_hash << std::endl;
+	std::cout
+		<< "uciok" << std::endl;
+}

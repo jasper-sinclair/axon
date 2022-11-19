@@ -6,49 +6,6 @@
 #include "movegen.h"
 #include "random.h"
 
-void magic::init_magic()
-{
-	attack_table.clear();
-	attack_table.reserve(table_size);
-
-	std::vector<uint64_t> attack_temp;
-	attack_temp.reserve(table_size);
-
-	std::vector<uint64_t> blocker;
-	blocker.reserve(table_size);
-
-	for (uint8_t sl{rook}; sl <= bishop; ++sl)
-	{
-		init_mask(sl);
-		init_blocker(sl, blocker);
-		init_move(sl, blocker, attack_temp);
-		init_magic(sl, blocker, attack_temp);
-		init_connect(sl, blocker, attack_temp);
-	}
-}
-
-void magic::init_mask(const uint8_t sl)
-{
-	assert(sl == rook || sl == bishop);
-
-	for (int i{0}; i < 64; ++i)
-	{
-		const uint64_t sq{1ULL << i};
-		assert(slider[sl][sq].mask == 0ULL);
-
-		for (int dir{sl}; dir < 8; dir += 2)
-		{
-			uint64_t flood{sq};
-			while (!(flood & ray[dir].border))
-			{
-				slider[sl][i].mask |= flood;
-				shift_real(flood, ray[dir].shift);
-			}
-		}
-		slider[sl][i].mask ^= sq;
-	}
-}
-
 void magic::init_blocker(const uint8_t sl, std::vector<uint64_t>& blocker)
 {
 	bool bit[12]{false};
@@ -93,33 +50,82 @@ void magic::init_blocker(const uint8_t sl, std::vector<uint64_t>& blocker)
 	}
 }
 
-void magic::init_move(const uint8_t sl, const std::vector<uint64_t>& blocker, std::vector<uint64_t>& attack_temp)
+void magic::init_connect(const uint8_t sl, const std::vector<uint64_t>& blocker, const std::vector<uint64_t>& attack_temp)
 {
 	assert(sl == rook || sl == bishop);
-	assert(attack_temp.size() == 0U || attack_temp.size() == 102400U);
+	assert(attack_table.size() == 0U || attack_table.size() == 102400U);
+
+	for (int sq{0}; sq < 64; ++sq)
+	{
+		const int max{1 << (64 - slider[sl][sq].shift)};
+
+		for (int cnt{0}; cnt < max; ++cnt)
+			attack_table[slider[sl][sq].offset
+				+ static_cast<int>(blocker[slider[sl][sq].offset + cnt] * slider[sl][sq].magic
+					>> slider[sl][sq].shift)] = attack_temp[slider[sl][sq].offset + cnt];
+	}
+}
+
+void magic::init_king()
+{
+	for (int i{0}; i < 64; ++i)
+	{
+		const uint64_t sq{1ULL << i};
+		assert(king_table[sq] == 0ULL);
+
+		for (int dir{0}; dir < 8; ++dir)
+		{
+			if (const uint64_t att{sq}; !(att & ray[dir].border))
+			{
+				king_table[i] |= shift(att, ray[dir].shift);
+			}
+		}
+	}
+}
+
+void magic::init_knight()
+{
+	constexpr rays pattern[]
+	{
+		{15, 0xffff010101010101}, {6, 0xff03030303030303},
+		{54, 0x03030303030303ff}, {47, 0x010101010101ffff},
+		{49, 0x808080808080ffff}, {58, 0xc0c0c0c0c0c0c0ff},
+		{10, 0xffc0c0c0c0c0c0c0}, {17, 0xffff808080808080}
+	};
 
 	for (int i{0}; i < 64; ++i)
 	{
 		const uint64_t sq{1ULL << i};
+		assert(knight_table[sq] == 0ULL);
 
-		const int max{1 << (64 - slider[sl][i].shift)};
-		for (int cnt{0}; cnt < max; ++cnt)
+		for (int dir{0}; dir < 8; ++dir)
 		{
-			uint64_t pos{0};
-
-			for (int dir{sl}; dir < 8; dir += 2)
+			if (const uint64_t att{sq}; !(att & pattern[dir].border))
 			{
-				uint64_t flood{sq};
-				while (!(flood & ray[dir].border) && !(flood & blocker[slider[sl][i].offset + cnt]))
-				{
-					shift_real(flood, ray[dir].shift);
-					pos |= flood;
-				}
+				knight_table[i] |= shift(att, pattern[dir].shift);
 			}
-			attack_temp.push_back(pos);
-
-			assert(attack_temp.size() - 1 == slider[sl][sq].offset + cnt);
 		}
+	}
+}
+
+void magic::init_magic()
+{
+	attack_table.clear();
+	attack_table.reserve(table_size);
+
+	std::vector<uint64_t> attack_temp;
+	attack_temp.reserve(table_size);
+
+	std::vector<uint64_t> blocker;
+	blocker.reserve(table_size);
+
+	for (uint8_t sl{rook}; sl <= bishop; ++sl)
+	{
+		init_mask(sl);
+		init_blocker(sl, blocker);
+		init_move(sl, blocker, attack_temp);
+		init_magic(sl, blocker, attack_temp);
+		init_connect(sl, blocker, attack_temp);
 	}
 }
 
@@ -169,19 +175,55 @@ void magic::init_magic(const uint8_t sl, const std::vector<uint64_t>& blocker, c
 	}
 }
 
-void magic::init_connect(const uint8_t sl, const std::vector<uint64_t>& blocker, const std::vector<uint64_t>& attack_temp)
+void magic::init_mask(const uint8_t sl)
 {
 	assert(sl == rook || sl == bishop);
-	assert(attack_table.size() == 0U || attack_table.size() == 102400U);
 
-	for (int sq{0}; sq < 64; ++sq)
+	for (int i{0}; i < 64; ++i)
 	{
-		const int max{1 << (64 - slider[sl][sq].shift)};
+		const uint64_t sq{1ULL << i};
+		assert(slider[sl][sq].mask == 0ULL);
 
+		for (int dir{sl}; dir < 8; dir += 2)
+		{
+			uint64_t flood{sq};
+			while (!(flood & ray[dir].border))
+			{
+				slider[sl][i].mask |= flood;
+				shift_real(flood, ray[dir].shift);
+			}
+		}
+		slider[sl][i].mask ^= sq;
+	}
+}
+
+void magic::init_move(const uint8_t sl, const std::vector<uint64_t>& blocker, std::vector<uint64_t>& attack_temp)
+{
+	assert(sl == rook || sl == bishop);
+	assert(attack_temp.size() == 0U || attack_temp.size() == 102400U);
+
+	for (int i{0}; i < 64; ++i)
+	{
+		const uint64_t sq{1ULL << i};
+
+		const int max{1 << (64 - slider[sl][i].shift)};
 		for (int cnt{0}; cnt < max; ++cnt)
-			attack_table[slider[sl][sq].offset
-				+ static_cast<int>(blocker[slider[sl][sq].offset + cnt] * slider[sl][sq].magic
-					>> slider[sl][sq].shift)] = attack_temp[slider[sl][sq].offset + cnt];
+		{
+			uint64_t pos{0};
+
+			for (int dir{sl}; dir < 8; dir += 2)
+			{
+				uint64_t flood{sq};
+				while (!(flood & ray[dir].border) && !(flood & blocker[slider[sl][i].offset + cnt]))
+				{
+					shift_real(flood, ray[dir].shift);
+					pos |= flood;
+				}
+			}
+			attack_temp.push_back(pos);
+
+			assert(attack_temp.size() - 1 == slider[sl][sq].offset + cnt);
+		}
 	}
 }
 
@@ -201,48 +243,6 @@ void magic::init_ray(const uint8_t sl)
 			{
 				shift_real(flood, ray[dir].shift);
 				slide_ray[sl][i] |= flood;
-			}
-		}
-	}
-}
-
-void magic::init_king()
-{
-	for (int i{0}; i < 64; ++i)
-	{
-		const uint64_t sq{1ULL << i};
-		assert(king_table[sq] == 0ULL);
-
-		for (int dir{0}; dir < 8; ++dir)
-		{
-			if (const uint64_t att{sq}; !(att & ray[dir].border))
-			{
-				king_table[i] |= shift(att, ray[dir].shift);
-			}
-		}
-	}
-}
-
-void magic::init_knight()
-{
-	constexpr rays pattern[]
-	{
-		{15, 0xffff010101010101}, {6, 0xff03030303030303},
-		{54, 0x03030303030303ff}, {47, 0x010101010101ffff},
-		{49, 0x808080808080ffff}, {58, 0xc0c0c0c0c0c0c0ff},
-		{10, 0xffc0c0c0c0c0c0c0}, {17, 0xffff808080808080}
-	};
-
-	for (int i{0}; i < 64; ++i)
-	{
-		const uint64_t sq{1ULL << i};
-		assert(knight_table[sq] == 0ULL);
-
-		for (int dir{0}; dir < 8; ++dir)
-		{
-			if (const uint64_t att{sq}; !(att & pattern[dir].border))
-			{
-				knight_table[i] |= shift(att, pattern[dir].shift);
 			}
 		}
 	}

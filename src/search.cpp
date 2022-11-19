@@ -32,11 +32,11 @@ int search::alphabeta(board& pos, const int ply, const int depth, int beta, int 
 			return alpha;
 	}
 
-	const bool skip_pruning{ is_check(pos) || pv_evol[last][depth] || no_pruning[depth] };
-	int score{ ndef };
+	const bool skip_pruning{is_check(pos) || pv_evol[last][depth] || no_pruning[depth]};
+	int score{ndef};
 
-	uint16_t tt_move{ 0 };
-	uint8_t tt_flag{ 0 };
+	uint16_t tt_move{0};
+	uint8_t tt_flag{0};
 	if (hash::tt_probe(ply, pos, score, tt_move, tt_flag))
 	{
 		assert(score != scoretype::ndef);
@@ -72,9 +72,9 @@ int search::alphabeta(board& pos, const int ply, const int depth, int beta, int 
 		if (ply <= 3
 			&& score + ply * 50 + 100 <= alpha)
 		{
-			const int r_alpha{ alpha - ply * 50 - 100 };
+			const int r_alpha{alpha - ply * 50 - 100};
 
-			if (const int new_s{ qsearch(pos, r_alpha, r_alpha + 1) }; new_s <= r_alpha)
+			if (const int new_s{qsearch(pos, r_alpha, r_alpha + 1)}; new_s <= r_alpha)
 				return new_s;
 		}
 
@@ -82,8 +82,8 @@ int search::alphabeta(board& pos, const int ply, const int depth, int beta, int 
 			&& !pos.lone_king()
 			&& (score != ndef && score >= beta || score == ndef && eval::position(pos) >= beta))
 		{
-			const int R { ply > 6 ? 3 : 2 };
-			uint64_t ep_copy{ 0 };
+			const int R{ply > 6 ? 3 : 2};
+			uint64_t ep_copy{0};
 
 			pos.null_move(ep_copy);
 
@@ -113,28 +113,28 @@ int search::alphabeta(board& pos, const int ply, const int depth, int beta, int 
 
 	if (pv_evol[last][depth])
 	{
-		if (uint16_t* pos_list{ gen.find(pv_evol[last][depth]) }; pos_list != gen.movelist + gen.move_cnt)
+		if (uint16_t* pos_list{gen.find(pv_evol[last][depth])}; pos_list != gen.movelist + gen.move_cnt)
 			std::swap(gen.movelist[0], *pos_list);
 		else
-			for (int i{ depth + 1 }; pv_evol[last][i] != 0; pv_evol[last][i++] = 0);
+			for (int i{depth + 1}; pv_evol[last][i] != 0; pv_evol[last][i++] = 0);
 
 		pv_evol[last][depth] = 0;
 	}
 
 	else if (tt_move != 0)
 	{
-		if (uint16_t* pos_list{ gen.find(tt_move) }; pos_list != gen.movelist + gen.move_cnt)
+		if (uint16_t* pos_list{gen.find(tt_move)}; pos_list != gen.movelist + gen.move_cnt)
 			std::swap(gen.movelist[0], *pos_list);
 	}
 
 	const board save(pos);
-	for (int nr{ 0 }; nr < gen.move_cnt; ++nr)
+	for (int nr{0}; nr < gen.move_cnt; ++nr)
 	{
 		assert(gen.movelist[nr] != 0);
 
 		pos.new_move(gen.movelist[nr]);
 
-		int ext{ 1 };
+		int ext{1};
 		if (is_check(pos) && ply <= 4)
 			ext = 0;
 
@@ -154,7 +154,7 @@ int search::alphabeta(board& pos, const int ply, const int depth, int beta, int 
 			hash::tt_save(pos, gen.movelist[nr], score, ply, exact);
 
 			pv_evol[depth - 1][0] = gen.movelist[nr];
-			for (int i{ 0 }; pv_evol[depth][i] != 0; ++i)
+			for (int i{0}; pv_evol[depth][i] != 0; ++i)
 			{
 				pv_evol[depth - 1][i + 1] = pv_evol[depth][i];
 			}
@@ -167,58 +167,6 @@ int search::alphabeta(board& pos, const int ply, const int depth, int beta, int 
 	return alpha;
 }
 
-void search::root_alphabeta(board& pos, uint16_t pv[], int& best_score, const int ply)
-{
-	if (pv[0])
-	{
-		assert(root.in_list(pv[0]));
-
-		std::swap(root.movelist[0], root.movelist[1]);
-		std::swap(root.movelist[0], *root.find(pv[0]));
-
-		for (int i{ 0 }; pv[i] != 0; ++i)
-		{
-			pv_evol[last][i] = pv[i];
-		}
-	}
-
-	const board saved(pos);
-	int alpha{ -mate_score};
-	constexpr int beta{mate_score};
-
-	for (int nr{ 0 }; nr < root.move_cnt && !engine::stop; ++nr)
-	{
-		assert(root.movelist[nr] != 0);
-		assert(beta > alpha);
-
-		pos.new_move(root.movelist[nr]);
-
-		const int score = -alphabeta(pos, ply - 1, 1, -alpha, -beta);
-		pos = saved;
-
-		if (score > alpha && !engine::stop)
-		{
-			alpha = score;
-			pv[0] = root.movelist[nr];
-			for (int i{ 0 }; pv_evol[0][i] != 0; ++i)
-			{
-				pv[i + 1] = pv_evol[0][i];
-			}
-
-			hash::tt_save(pos, pv[0], score, ply, lower);
-		}
-	}
-
-	if (alpha == -mate_score)
-	{
-		pv[0] = 0;
-		return;
-	}
-
-	best_score = alpha;
-	hash::tt_save(pos, pv[0], best_score, ply, exact);
-}
-
 uint16_t search::idd(board& pos, timemanager& chrono)
 {
 	assert(engine::depth >= 1);
@@ -227,11 +175,11 @@ uint16_t search::idd(board& pos, timemanager& chrono)
 	total_time.start();
 	max_time = chrono.get_movetime(pos.turn);
 
-	uint16_t pv[max_depth]{ 0 };
-	uint16_t best_move{ 0 };
+	uint16_t pv[max_depth]{0};
+	uint16_t best_move{0};
 	std::string score_str;
 
-	for (int i{ abs(game::moves - 2) }; i <= game::moves; ++i)
+	for (int i{abs(game::moves - 2)}; i <= game::moves; ++i)
 		hashlist[i] = game::hashlist[i];
 
 	for (auto& i : pv_evol)
@@ -245,23 +193,23 @@ uint16_t search::idd(board& pos, timemanager& chrono)
 		return root.movelist[0];
 	}
 
-	for (int ply{ 1 }; ply <= engine::depth; ++ply)
+	for (int ply{1}; ply <= engine::depth; ++ply)
 	{
 		timer mean_time;
 		board::nodes = 0;
-		int score{ 0 };
+		int score{0};
 
 		root_alphabeta(pos, pv, score, ply);
-		const auto interim{ mean_time.elapsed() };
+		const auto interim{mean_time.elapsed()};
 
 		if (pv[0])
 		{
 			best_move = pv[0];
 			assert(pos.nodes != 0);
-			const auto nps{ static_cast<int>(board::nodes * 1000 / (interim + 1)) };
-			std::string nodes_str{ std::to_string(board::nodes) };
+			const auto nps{static_cast<int>(board::nodes * 1000 / (interim + 1))};
+			std::string nodes_str{std::to_string(board::nodes)};
 
-			auto seldepth{ ply };
+			auto seldepth{ply};
 			for (; seldepth < max_depth; ++seldepth)
 			{
 				if (pv[seldepth] == 0)
@@ -270,16 +218,16 @@ uint16_t search::idd(board& pos, timemanager& chrono)
 			std::string ply_str = std::to_string(ply);
 			if (engine::stop) ply_str = std::to_string(ply - 1);
 
-			for (int i{ mate_score - abs(score) }; i < seldepth; pv[i++] = 0);
+			for (int i{mate_score - abs(score)}; i < seldepth; pv[i++] = 0);
 
 			if (score == draw_score)
 			{
 				const board saved(pos);
-				for (int i{ 0 }; pv[i] != 0; ++i)
+				for (int i{0}; pv[i] != 0; ++i)
 				{
 					if (movegen gen(pos, all); !gen.in_list(pv[i]))
 					{
-						for (auto j{ i }; pv[j] != 0; pv[j++] = 0);
+						for (auto j{i}; pv[j] != 0; pv[j++] = 0);
 						break;
 					}
 					pos.new_move(pv[i]);
@@ -301,7 +249,7 @@ uint16_t search::idd(board& pos, timemanager& chrono)
 				<< " time " << interim
 				<< " pv ";
 
-			for (int i{ 0 }; i < ply && pv[i] != 0; ++i)
+			for (int i{0}; i < ply && pv[i] != 0; ++i)
 			{
 				std::cout
 					<< notation::conv_to_str(to_sq1(pv[i]))
@@ -328,16 +276,16 @@ int search::qsearch(board& pos, int alpha, const int beta)
 
 	const movegen gen(pos, captures);
 
-	int score{ eval::position(pos) };
+	int score{eval::position(pos)};
 	if (!gen.move_cnt) return score;
 
 	if (score >= beta) return score;
 	if (score > alpha) alpha = score;
 
 	const board save(pos);
-	for (int nr{ 0 }; nr < gen.move_cnt; ++nr)
+	for (int nr{0}; nr < gen.move_cnt; ++nr)
 	{
-		if (const int pce{ pos.piece_sq[to_sq2(gen.movelist[nr])] }; !pos.lone_king()
+		if (const int pce{pos.piece_sq[to_sq2(gen.movelist[nr])]}; !pos.lone_king()
 			&& !is_promo(gen.movelist[nr])
 			&& score + eval::piece_value[mg][pce] + 100 < alpha)
 			continue;
@@ -351,4 +299,56 @@ int search::qsearch(board& pos, int alpha, const int beta)
 		if (score > alpha) alpha = score;
 	}
 	return alpha;
+}
+
+void search::root_alphabeta(board& pos, uint16_t pv[], int& best_score, const int ply)
+{
+	if (pv[0])
+	{
+		assert(root.in_list(pv[0]));
+
+		std::swap(root.movelist[0], root.movelist[1]);
+		std::swap(root.movelist[0], *root.find(pv[0]));
+
+		for (int i{0}; pv[i] != 0; ++i)
+		{
+			pv_evol[last][i] = pv[i];
+		}
+	}
+
+	const board saved(pos);
+	int alpha{-mate_score};
+	constexpr int beta{mate_score};
+
+	for (int nr{0}; nr < root.move_cnt && !engine::stop; ++nr)
+	{
+		assert(root.movelist[nr] != 0);
+		assert(beta > alpha);
+
+		pos.new_move(root.movelist[nr]);
+
+		const int score = -alphabeta(pos, ply - 1, 1, -alpha, -beta);
+		pos = saved;
+
+		if (score > alpha && !engine::stop)
+		{
+			alpha = score;
+			pv[0] = root.movelist[nr];
+			for (int i{0}; pv_evol[0][i] != 0; ++i)
+			{
+				pv[i + 1] = pv_evol[0][i];
+			}
+
+			hash::tt_save(pos, pv[0], score, ply, lower);
+		}
+	}
+
+	if (alpha == -mate_score)
+	{
+		pv[0] = 0;
+		return;
+	}
+
+	best_score = alpha;
+	hash::tt_save(pos, pv[0], best_score, ply, exact);
 }

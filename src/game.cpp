@@ -22,17 +22,6 @@ bool draw::by_rep(const board& pos, uint64_t list[], int size)
 	return false;
 }
 
-bool draw::verify(const board& pos, uint64_t list[])
-{
-	if (pos.half_moves >= 4 && by_rep(pos, list, pos.moves))
-		return true;
-	if (by_material(pos))
-		return true;
-	if (pos.half_moves >= 50)
-		return true;
-	return false;
-}
-
 void game::reset()
 {
 	moves = 0;
@@ -46,4 +35,15 @@ void game::save_move(const board& pos, const uint16_t move)
 	movelist[moves] = move;
 	hashlist[moves] = pos.key;
 	moves += 1;
+}
+
+bool draw::verify(const board& pos, uint64_t list[])
+{
+	if (pos.half_moves >= 4 && by_rep(pos, list, pos.moves))
+		return true;
+	if (by_material(pos))
+		return true;
+	if (pos.half_moves >= 50)
+		return true;
+	return false;
 }
