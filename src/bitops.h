@@ -15,7 +15,8 @@ inline int popcnt(uint64_t b)
 	return static_cast<int>(b);
 }
 
-inline int debruijn[64] = {
+inline int debruijn[64] =
+{
 	0, 47, 1, 56, 48, 27, 2, 60,
 	57, 49, 41, 37, 28, 16, 3, 61,
 	54, 58, 35, 52, 50, 42, 21, 44,
@@ -28,5 +29,5 @@ inline int debruijn[64] = {
 
 inline int lsb(const uint64_t b)
 {
-	return debruijn[ 0x03f79d71b4cb0a89 * (b ^ b - 1) >> 58 ];
+	return debruijn[0x03f79d71b4cb0a89 * (b ^ b - 1) >> 58];
 }
