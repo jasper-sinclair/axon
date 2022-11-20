@@ -1,9 +1,11 @@
 #include <cassert>
+#include "board.h"
+#include "bitops.h"
 #include "hash.h"
 #include "notation.h"
-#include "bitops.h"
-#include "board.h"
 #include "random.h"
+
+uint64_t board::nodes;
 
 void board::clear()
 {
@@ -14,14 +16,14 @@ void board::clear()
 	moves = 0;
 	half_moves = 0;
 	castle_rights = 0;
-	ep_square = 0;
+	ep_square = 0ULL;
 	turn = white;
 	phase = 0;
 }
 
 bool board::lone_king() const
 {
-	return (pieces[kings] | pieces[pawns]) == side[both];
+	return (pieces[king] | pieces[pawn]) == side[both];
 }
 
 void board::new_move(const uint16_t move)
@@ -30,24 +32,24 @@ void board::new_move(const uint16_t move)
 	moves += 1;
 	half_moves += 1;
 
-	const auto from{to_sq1(move)};
-	const auto to{to_sq2(move)};
+	const auto from = to_sq1(move);
+	const auto to = to_sq2(move);
 	assert(from >= 0 && from < 64);
 	assert(to >= 0 && to < 64);
 
-	const uint64_t from_64{1ULL << from};
-	const uint64_t to_64{1ULL << to};
+	const uint64_t from_64 = 1ULL << from;
+	const uint64_t to_64 = 1ULL << to;
 
-	const auto flag{to_flag(move)};
-	const auto pce{piece_sq[from]};
-	const auto victim{piece_sq[to]};
+	const auto flag = to_flag(move);
+	const auto pce = piece_sq[from];
+	const auto victim = piece_sq[to];
 
 	assert(flag == victim || flag >= 7);
 	assert(pce != no_piece);
 
-	const auto saved_castler{castle_rights};
-	rook_moved(to_64);
-	rook_moved(from_64);
+	const auto saved_castl_r = castle_rights;
+	rook_moved(to_64, to);
+	rook_moved(from_64, from);
 
 	if (victim != no_piece)
 	{
@@ -56,27 +58,28 @@ void board::new_move(const uint16_t move)
 
 		side[turn ^ 1] &= ~to_64;
 		pieces[victim] &= ~to_64;
+
 		phase -= phase_value[victim];
 		key ^= random_u64_number();
 
 		assert(phase >= 0);
 	}
-	else if (pce == pawns)
+	else if (pce == pawn)
 	{
 		half_moves = 0;
 		if (flag == enpassant)
 		{
 			assert(ep_square != 0);
 
-			const uint64_t capture{shift(ep_square, pawnpush[turn ^ 1])};
-			assert(capture & pieces[pawns] & side[turn ^ 1]);
+			const uint64_t capt = shift(ep_square, ppush[turn ^ 1]);
+			assert(capt & pieces[pawn] & side[turn ^ 1]);
 
-			pieces[pawns] &= ~capture;
-			side[turn ^ 1] &= ~capture;
+			pieces[pawn] &= ~capt;
+			side[turn ^ 1] &= ~capt;
 
-			const uint16_t sq_old{static_cast<uint16_t>(lsb(capture))};
+			const auto sq_old = static_cast<uint16_t>(lsb(capt));
 
-			assert(piece_sq[sq_old] == pawns);
+			assert(piece_sq[sq_old] == pawn);
 			piece_sq[sq_old] = no_piece;
 
 			key ^= random_u64_number();
@@ -84,11 +87,11 @@ void board::new_move(const uint16_t move)
 	}
 
 	ep_square = 0ULL;
-	if (pce == pawns && abs(from - to) == 16)
+	if (pce == pawn && abs(from - to) == 16)
 	{
-		ep_square = shift(from_64, pawnpush[turn]);
+		ep_square = shift(from_64, ppush[turn]);
 
-		if (const auto file{from_64 & 7}; pieces[pawns] & side[turn ^ 1] & hash::ep_flank[turn][file])
+		if (const auto file_idx = from & 7; pieces[pawn] & side[turn ^ 1] & ep_flank[turn][file_idx])
 			key ^= random_u64_number();
 	}
 
@@ -109,36 +112,36 @@ void board::new_move(const uint16_t move)
 			switch (flag)
 			{
 			case white_kingside:
-				pieces[rooks] ^= 0x1, side[turn] ^= 0x1;
-				pieces[rooks] |= 0x4, side[turn] |= 0x4;
-				piece_sq[h1] = no_piece, piece_sq[f1] = rooks;
+				pieces[rook] ^= 0x1, side[turn] ^= 0x1;
+				pieces[rook] |= 0x4, side[turn] |= 0x4;
+				piece_sq[h1] = no_piece, piece_sq[f1] = rook;
 
 				key ^= random_u64_number();
 				key ^= random_u64_number();
 				break;
 
 			case black_kingside:
-				pieces[rooks] ^= 0x100000000000000, side[turn] ^= 0x100000000000000;
-				pieces[rooks] |= 0x400000000000000, side[turn] |= 0x400000000000000;
-				piece_sq[h8] = no_piece, piece_sq[f8] = rooks;
+				pieces[rook] ^= 0x100000000000000, side[turn] ^= 0x100000000000000;
+				pieces[rook] |= 0x400000000000000, side[turn] |= 0x400000000000000;
+				piece_sq[h8] = no_piece, piece_sq[f8] = rook;
 
 				key ^= random_u64_number();
 				key ^= random_u64_number();
 				break;
 
 			case white_queenside:
-				pieces[rooks] ^= 0x80, side[turn] ^= 0x80;
-				pieces[rooks] |= 0x10, side[turn] |= 0x10;
-				piece_sq[a1] = no_piece, piece_sq[d1] = rooks;
+				pieces[rook] ^= 0x80, side[turn] ^= 0x80;
+				pieces[rook] |= 0x10, side[turn] |= 0x10;
+				piece_sq[a1] = no_piece, piece_sq[d1] = rook;
 
 				key ^= random_u64_number();
 				key ^= random_u64_number();
 				break;
 
 			case black_queenside:
-				pieces[rooks] ^= 0x8000000000000000, side[turn] ^= 0x8000000000000000;
-				pieces[rooks] |= 0x1000000000000000, side[turn] |= 0x1000000000000000;
-				piece_sq[a8] = no_piece, piece_sq[d8] = rooks;
+				pieces[rook] ^= 0x8000000000000000, side[turn] ^= 0x8000000000000000;
+				pieces[rook] |= 0x1000000000000000, side[turn] |= 0x1000000000000000;
+				piece_sq[a8] = no_piece, piece_sq[d8] = rook;
 
 				key ^= random_u64_number();
 				key ^= random_u64_number();
@@ -151,15 +154,16 @@ void board::new_move(const uint16_t move)
 
 		else
 		{
-			const int promo_p{flag - 11};
+			const int promo_p = flag - 11;
 
 			assert(flag >= 12 && flag <= 15);
-			assert(pieces[pawns] & to_64);
-			assert(piece_sq[to] == pawns);
+			assert(pieces[pawn] & to_64);
+			assert(piece_sq[to] == pawn);
 
-			pieces[pawns] ^= to_64;
+			pieces[pawn] ^= to_64;
 			pieces[promo_p] |= to_64;
-			piece_sq[to] = promo_p;
+			piece_sq[to] = static_cast<uint8_t>(promo_p);
+
 			key ^= random_u64_number();
 			key ^= random_u64_number();
 
@@ -167,19 +171,24 @@ void board::new_move(const uint16_t move)
 		}
 	}
 
-	if (to_64 & pieces[kings])
-		castle_rights &= castler[turn];
-
-	if (saved_castler != castle_rights)
+	if (to_64 & pieces[king])
 	{
-		const auto changes{saved_castler ^ castle_rights};
-		for (int i{0}; i < 4; ++i)
-			if (changes & castleright[i])
+		castle_rights &= castl_r[turn];
+		king_sq[turn] = to;
+	}
+
+	if (saved_castl_r != castle_rights)
+	{
+		const auto changes = saved_castl_r ^ castle_rights;
+		for (const unsigned char i : castleright)
+		{
+			if (changes & i)
 				key ^= random_u64_number();
+		}
 	}
 
 	turn ^= 1;
-	key ^= hash::is_turn[0];
+	key ^= is_turn[0];
 
 	side[both] = side[white] | side[black];
 	assert(side[both] == (side[white] ^ side[black]));
@@ -187,23 +196,26 @@ void board::new_move(const uint16_t move)
 
 void board::null_move(uint64_t& ep_copy)
 {
-	key ^= hash::is_turn[0];
-
+	key ^= is_turn[0];
 	if (ep_square != 0)
-		if (const auto file{lsb(ep_square) & 7}; pieces[pawns] & side[turn ^ 1] & hash::ep_flank[turn][file]) key ^= random_u64_number();
+	{
+		if (const auto file_idx = lsb(ep_square) & 7; pieces[pawn] & side[turn ^ 1] & ep_flank[turn][file_idx])
+			key ^= random_u64_number();
+	}
 
 	ep_copy = ep_square;
 	ep_square = 0;
 	half_moves += 1;
 	moves += 1;
+	nodes += 1;
 	turn ^= 1;
 }
 
 void board::parse_fen(const std::string& fen)
 {
 	clear();
-	int sq{63};
-	uint32_t focus{0};
+	int sq = 63;
+	uint32_t focus = 0;
 	assert(focus < fen.size());
 
 	while (focus < fen.size() && fen[focus] != ' ')
@@ -223,19 +235,21 @@ void board::parse_fen(const std::string& fen)
 		}
 		else
 		{
-			for (int pce{pawns}; pce <= kings; ++pce)
-				for (int col{white}; col <= black; ++col)
+			for (int pce = pawn; pce <= king; ++pce)
+			{
+				for (int col = white; col <= black; ++col)
 				{
 					if (fen[focus] == p_char[col][pce])
 					{
 						pieces[pce] |= 1ULL << sq;
 						side[col] |= 1ULL << sq;
-						piece_sq[sq] = pce;
+						piece_sq[sq] = static_cast<uint8_t>(pce);
 
 						phase += phase_value[pce];
 						break;
 					}
 				}
+			}
 			sq -= 1;
 		}
 		focus += 1;
@@ -244,6 +258,11 @@ void board::parse_fen(const std::string& fen)
 
 	side[both] = side[white] | side[black];
 	assert(side[both] == (side[white] ^ side[black]));
+
+	for (int col = white; col <= black; ++col)
+	{
+		king_sq[col] = lsb(pieces[king] & side[col]);
+	}
 
 	focus += 1;
 	if (fen[focus] == 'w')
@@ -290,36 +309,34 @@ void board::parse_fen(const std::string& fen)
 		move_c += fen[focus++];
 	moves = stoi(move_c);
 
-	key = hash::to_key(*this);
+	key = to_key(*this);
 }
 
-void board::rook_moved(const uint64_t& sq)
+void board::rook_moved(const uint64_t& sq64, const uint16_t sq)
 {
-	if (sq & pieces[rooks])
+	if (sq64 & pieces[rook])
 	{
-		if (sq & side[white])
+		if (sq64 & side[white])
 		{
-			if (sq == 0x01)
-				castle_rights &= ~castleright[white_short];
-			else if (sq == 0x80)
-				castle_rights &= ~castleright[white_long];
+			if (sq == h1) castle_rights &= ~castleright[white_short];
+			else if (sq == a1) castle_rights &= ~castleright[white_long];
 		}
-		else if (sq & side[black])
+		else
 		{
-			if (sq == 0x0100000000000000)
-				castle_rights &= ~castleright[black_short];
-			else if (sq == 0x8000000000000000)
-				castle_rights &= ~castleright[black_long];
+			if (sq == h8) castle_rights &= ~castleright[black_short];
+			else if (sq == a8) castle_rights &= ~castleright[black_long];
 		}
 	}
 }
 
 void board::undo_null_move(const uint64_t& ep_copy)
 {
-	key ^= hash::is_turn[0];
-
+	key ^= is_turn[0];
 	if (ep_copy != 0)
-		if (const auto file{lsb(ep_copy) & 7}; pieces[pawns] & side[turn ^ 1] & hash::ep_flank[turn][file]) key ^= random_u64_number();
+	{
+		if (const auto file_idx = lsb(ep_copy) & 7; pieces[pawn] & side[turn ^ 1] & ep_flank[turn][file_idx])
+			key ^= random_u64_number();
+	}
 
 	ep_square = ep_copy;
 	half_moves -= 1;
