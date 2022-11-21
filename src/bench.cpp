@@ -4,8 +4,6 @@
 #include "movegen.h"
 #include "timeman.h"
 
-uint64_t total_nodes = 0;
-
 uint64_t bench::perft(board& pos, const int depth)
 {
 	uint64_t nodes = 0;
