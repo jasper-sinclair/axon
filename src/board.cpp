@@ -173,7 +173,7 @@ void board::new_move(const uint16_t move)
 
 	if (to_64 & pieces[king])
 	{
-		castle_rights &= castl_r[turn];
+		castle_rights &= castle_r[turn];
 		king_sq[turn] = to;
 	}
 
