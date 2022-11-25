@@ -14,7 +14,7 @@ namespace eval
 		{100, 550, 320, 350, 1000, 0}
 	};
 
-	constexpr int tempo_bonus[]{10, 0};
+	constexpr int tempo_bonus[]{20, 0};
 	constexpr int bishop_pair[2]{30, 60};
 	constexpr int knights_connected[2]{10, 10};
 	constexpr int major_behind_pp[2]{10, 20};

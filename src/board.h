@@ -4,21 +4,21 @@
 class board
 {
 public:
-	uint8_t piece_sq[64];
-	uint64_t pieces[6];
-	uint64_t side[3];
+	int half_moves;
 	int king_sq[2];
 	int moves;
-	int half_moves;
 	int turn;
+	static uint64_t nodes;
+	uint64_t ep_square;
+	uint64_t key;
+	uint64_t pieces[6];
+	uint64_t side[3];
 	uint8_t castle_rights;
 	uint8_t phase;
-	uint64_t key;
-	uint64_t ep_square;
-	static uint64_t nodes;
+	uint8_t piece_sq[64];
 
-	void clear();
 	[[nodiscard]] bool lone_king() const;
+	void clear();
 	void new_move(uint16_t move);
 	void null_move(uint64_t& ep_copy);
 	void parse_fen(const std::string& fen);
