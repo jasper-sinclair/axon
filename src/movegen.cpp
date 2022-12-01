@@ -1,166 +1,157 @@
 #include <algorithm>
 #include <cassert>
 #include "bitops.h"
-#include "movegen.h"
 #include "magic.h"
-
-uint64_t attack::by_pawns(const board& pos, const int col)
-{
-	assert(col == white || col == black);
-
-	uint64_t att_table{shift(pos.pieces[pawns] & pos.side[col] & ~border[col], cap_left[col])};
-	att_table |= shift(pos.pieces[pawns] & pos.side[col] & ~border[col ^ 1], cap_right[col]);
-
-	return att_table;
-}
+#include "movegen.h"
 
 uint64_t movegen::check(const board& pos, const int turn, uint64_t squares)
 {
 	assert(turn == white || turn == black);
 
-	const uint64_t king{pos.side[turn] & pos.pieces[kings]};
-	const uint64_t enemy{pos.side[turn ^ 1]};
-	uint64_t inquire{squares};
+	const uint64_t k = pos.side[turn] & pos.pieces[king];
+	uint64_t inquire = squares;
 
 	while (inquire)
 	{
-		const auto sq{lsb(inquire)};
-		const uint64_t sq64{1ULL << sq};
-		const uint64_t side[]{~(sq64 - 1), sq64 - 1};
+		const auto sq = lsb(inquire);
+		const uint64_t sq64 = 1ULL << sq;
+		const uint64_t in_front[]{~(sq64 - 1), sq64 - 1};
 
-		uint64_t attacker{slider_attacks(rook, sq, pos.side[both] & ~king) & (pos.pieces[rooks] | pos.pieces[queens])};
-		attacker |= slider_attacks(bishop, sq, pos.side[both] & ~king) & (pos.pieces[bishops] | pos.pieces[queens]);
-		attacker |= knight_table[sq] & pos.pieces[knights];
-		attacker |= king_table[sq] & pos.pieces[kings];
-		attacker |= king_table[sq] & pos.pieces[pawns] & slide_ray[bishop][sq] & side[turn];
-		attacker &= enemy;
+		uint64_t att = slider_attacks(rook_slider, sq, pos.side[both] & ~k) & (pos.pieces[rook] | pos.pieces[queen]);
+		att |= slider_attacks(bishop_slider, sq, pos.side[both] & ~k) & (pos.pieces[bishop] | pos.pieces[queen]);
+		att |= knight_table[sq] & pos.pieces[knight];
+		att |= king_table[sq] & pos.pieces[king];
+		att |= king_table[sq] & pos.pieces[pawn] & slide_ray[bishop_slider][sq] & in_front[turn];
+		att &= pos.side[turn ^ 1];
 
-		if (attacker)
-			squares ^= sq64;
+		if (att) squares ^= sq64;
+
 		inquire &= inquire - 1;
 	}
 	return squares;
 }
 
-uint16_t* movegen::find(const uint16_t move) { return std::find(movelist, movelist + move_cnt, move); }
+uint16_t* movegen::find(const uint16_t move)
+{
+	return std::find(movelist, movelist + move_cnt, move);
+}
 
-int movegen::gen_moves(const board& pos, const mvgen type)
+int movegen::gen_moves(const board& pos, const gentype type)
 {
 	ahead = static_cast<uint8_t>(pos.turn);
 	back = static_cast<uint8_t>(pos.turn * 2);
 
+	border_right = ~border[pos.turn ^ 1];
+	border_left = ~border[pos.turn];
+	pawn_rank = third_rank[pos.turn];
+
 	friends = pos.side[pos.turn];
 	enemies = pos.side[pos.turn ^ 1];
-	pawn_rank = sec_rank[pos.turn];
+	fr_king = pos.pieces[king] & friends;
 
-	gentype[captures] = enemies;
-	gentype[quiets] = ~pos.side[both];
+	legal init(pos);
 
-	border_right = bfile[pos.turn ^ 1];
-	border_left = bfile[pos.turn];
-
-	king_fr = friends & pos.pieces[kings];
-	sq_king_fr = lsb(king_fr);
-
-	move_cnt = 0;
-	pin_cnt = 0;
-
-	legal(pos);
-	pin(pos);
+	gen_type[captures] = enemies;
+	gen_type[quiets] = ~pos.side[both];
+	move_cnt = promo_cnt = capt_cnt = 0;
 
 	king_moves(pos, captures);
-	pawn_promotions(pos);
 	pawn_captures(pos);
 	piece_moves(pos, captures);
+	capt_cnt = move_cnt;
+
+	pawn_promo(pos);
+	promo_cnt = move_cnt - capt_cnt;
 
 	if (type == all)
 	{
-		pawn_quiet_moves(pos);
+		pawn_quiet(pos);
 		piece_moves(pos, quiets);
 		king_moves(pos, quiets);
 	}
 
-	unpin();
 	return move_cnt;
 }
 
-void movegen::init() { for (auto& p : pinned) p = 0xffffffffffffffff; }
-
-bool movegen::in_list(const uint16_t move) { return find(move) != movelist + move_cnt; }
-
-void movegen::king_moves(const board& pos, const mvgen type)
+void movegen::init()
 {
-	uint64_t targets{check(pos, pos.turn, king_table[sq_king_fr] & gentype[type])};
+	std::fill_n(pinned, 64, 0xffffffffffffffff);
+}
+
+bool movegen::in_list(const uint16_t move)
+{
+	return find(move) != movelist + move_cnt;
+}
+
+void movegen::king_moves(const board& pos, const gentype type)
+{
+	uint64_t targets = check(pos, pos.turn, king_table[pos.king_sq[pos.turn]] & gen_type[type]);
 	while (targets)
 	{
-		movelist[move_cnt++] = encode(sq_king_fr, lsb(targets), pos.piece_sq[lsb(targets)]);
+		movelist[move_cnt++] = encode(pos.king_sq[pos.turn], lsb(targets), pos.piece_sq[lsb(targets)]);
 		targets &= targets - 1;
 	}
 
-	if (type == quiets && king_fr & 0x800000000000008)
+	if (type == quiets && fr_king & 0x800000000000008)
 	{
-		constexpr uint64_t r[]{0xff, 0xff00000000000000};
-		const uint64_t rank_king{r[pos.turn]};
+		const uint64_t rank_king = rank[pos.turn * 7];
 
 		constexpr uint8_t rights_s[]{0x1, 0x10};
 		constexpr uint8_t rights_l[]{0x4, 0x40};
 
-		if (rights_s[pos.turn] & pos.castle_rights
-			&& !(pos.side[both] & 0x600000000000006 & rank_king)
+		if (rights_s[pos.turn] & pos.castle_rights && !(pos.side[both] & 0x600000000000006 & rank_king)
 			&& popcnt(check(pos, pos.turn, 0x0e0000000000000e & rank_king)) == 3)
 		{
 			constexpr uint32_t target[]{1, 57};
-			movelist[move_cnt++] = encode(sq_king_fr, target[pos.turn], white_kingside + pos.turn * 2);
+			movelist[move_cnt++] = encode(pos.king_sq[pos.turn], target[pos.turn], white_kingside + pos.turn * 2);
 		}
-		if (rights_l[pos.turn] & pos.castle_rights
-			&& !(pos.side[both] & 0x7000000000000070 & rank_king)
+		if (rights_l[pos.turn] & pos.castle_rights && !(pos.side[both] & 0x7000000000000070 & rank_king)
 			&& popcnt(check(pos, pos.turn, 0x3800000000000038 & rank_king)) == 3)
 		{
 			constexpr uint32_t target[]{5, 61};
-			movelist[move_cnt++] = encode(sq_king_fr, target[pos.turn], white_queenside + pos.turn * 2);
+			movelist[move_cnt++] = encode(pos.king_sq[pos.turn], target[pos.turn], (white_queenside + pos.turn * 2));
 		}
 	}
 }
 
-void movegen::legal(const board& pos)
+void movegen::init_legal(const board& pos)
 {
-	const uint64_t side[]{~(king_fr - 1), king_fr - 1};
-	assert(king_fr != 0);
+	const uint64_t in_front[]{~(fr_king - 1), fr_king - 1};
+	const auto king_sq = pos.king_sq[pos.turn];
+	assert(fr_king != 0ULL);
 
-	uint64_t attackers{slider_attacks(rook, static_cast<int>(sq_king_fr), pos.side[both]) & (pos.pieces[rooks] | pos.pieces[queens])};
-	attackers |= slider_attacks(bishop, static_cast<int>(sq_king_fr), pos.side[both]) & (pos.pieces[bishops] | pos.pieces[queens]);
-	attackers |= knight_table[sq_king_fr] & pos.pieces[knights];
-	attackers |= king_table[sq_king_fr] & pos.pieces[pawns] & slide_ray[bishop][sq_king_fr] & side[pos.turn];
-	attackers &= enemies;
+	uint64_t att = slider_attacks(rook_slider, king_sq, pos.side[both]) & (pos.pieces[rook] | pos.pieces[queen]);
+	att |= slider_attacks(bishop_slider, king_sq, pos.side[both]) & (pos.pieces[bishop] | pos.pieces[queen]);
+	att |= knight_table[king_sq] & pos.pieces[knight];
+	att |= king_table[king_sq] & pos.pieces[pawn] & slide_ray[bishop_slider][king_sq] & in_front[pos.turn];
+	att &= enemies;
 
-	if (const int nr_att{popcnt(attackers)}; nr_att == 0)
+	if (const int nr_att = popcnt(att); nr_att == 0)
+	{
 		legal_sq = 0xffffffffffffffff;
+	}
 	else if (nr_att == 1)
 	{
-		if (attackers & pos.pieces[knights] || attackers & pos.pieces[pawns])
-			legal_sq = attackers;
+		if (att & pos.pieces[knight] || att & pos.pieces[pawn])
+		{
+			legal_sq = att;
+		}
 		else
 		{
-			assert(attackers & pos.pieces[rooks] || attackers & pos.pieces[bishops] || attackers & pos.pieces[queens]);
+			assert(att & pos.pieces[rook] || att & pos.pieces[bishop] || att & pos.pieces[queen]);
+			const auto every_att = slider_attacks(rook_slider, king_sq, pos.side[both]) | slider_attacks(bishop_slider, king_sq, pos.side[both]);
 
-			uint64_t single_ray[8]{0};
-			for (int dir{0}; dir < 8; ++dir)
+			for (const auto dir : ray)
 			{
-				uint64_t flood{king_fr};
-				while (!(flood & ray[dir].border))
-				{
-					shift_real(flood, ray[dir].shift);
-					single_ray[dir] |= flood;
-				}
-			}
+				auto flood = fr_king;
+				for (; !(flood & dir.border); flood |= shift(flood, dir.shift));
 
-			for (const auto& s : single_ray)
-				if (s & attackers)
+				if (flood & att)
 				{
-					legal_sq = s & (slider_attacks(rook, static_cast<int>(sq_king_fr), pos.side[both])
-						| slider_attacks(bishop, static_cast<int>(sq_king_fr), pos.side[both]));
+					legal_sq = flood & every_att;
 					break;
 				}
+			}
 		}
 	}
 	else
@@ -170,18 +161,27 @@ void movegen::legal(const board& pos)
 	}
 }
 
+void movegen::legal::pin_down(const board& pos)
+{
+	friends = pos.side[pos.turn];
+	enemies = pos.side[pos.turn ^ 1];
+	fr_king = pos.pieces[king] & friends;
+
+	pin(pos);
+}
+
 void movegen::pawn_captures(const board& pos)
 {
-	uint64_t targets{shift(pos.pieces[pawns] & friends & border_left, cap_left[ahead]) & ~promo_rank};
-	uint64_t targets_cap{targets & enemies & legal_sq};
+	uint64_t targets = shift(pos.pieces[pawn] & friends & border_left, cap_left[ahead]) & ~promo_rank;
+	uint64_t targets_cap = targets & enemies & legal_sq;
 
 	while (targets_cap)
 	{
-		uint64_t target{1ULL << lsb(targets_cap)};
-		const auto to_sq{lsb(targets_cap)};
-		const auto from_sq{to_sq - cap_left[back]};
+		uint64_t target = 1ULL << lsb(targets_cap);
+		const auto to_sq = lsb(targets_cap);
+		const auto from_sq = to_sq - cap_left[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target &= pinned[from_sq];
 		if (target)
@@ -190,29 +190,29 @@ void movegen::pawn_captures(const board& pos)
 		targets_cap &= targets_cap - 1;
 	}
 
-	uint64_t target_ep{targets & pos.ep_square & shift(legal_sq, push[ahead])};
+	uint64_t target_ep = targets & pos.ep_square & shift(legal_sq, push[ahead]);
 	if (target_ep)
 	{
-		const auto to_sq{lsb(target_ep)};
-		const auto from_sq{to_sq - cap_left[back]};
+		const auto to_sq = lsb(target_ep);
+		const auto from_sq = to_sq - cap_left[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target_ep &= pinned[from_sq];
 		if (target_ep)
 			movelist[move_cnt++] = encode(from_sq, to_sq, enpassant);
 	}
 
-	targets = shift(pos.pieces[pawns] & friends & border_right, cap_right[ahead]) & ~promo_rank;
+	targets = shift(pos.pieces[pawn] & friends & border_right, cap_right[ahead]) & ~promo_rank;
 	targets_cap = targets & enemies & legal_sq;
 
 	while (targets_cap)
 	{
-		uint64_t target{1ULL << lsb(targets_cap)};
-		const auto to_sq{lsb(targets_cap)};
-		const auto from_sq{to_sq - cap_right[back]};
+		uint64_t target = 1ULL << lsb(targets_cap);
+		const auto to_sq = lsb(targets_cap);
+		const auto from_sq = to_sq - cap_right[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target &= pinned[from_sq];
 		if (target)
@@ -224,10 +224,10 @@ void movegen::pawn_captures(const board& pos)
 	target_ep = targets & pos.ep_square & shift(legal_sq, push[ahead]);
 	if (target_ep)
 	{
-		const auto to_sq{lsb(target_ep)};
-		const auto from_sq{to_sq - cap_right[back]};
+		const auto to_sq = lsb(target_ep);
+		const auto from_sq = to_sq - cap_right[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target_ep &= pinned[from_sq];
 		if (target_ep)
@@ -235,59 +235,59 @@ void movegen::pawn_captures(const board& pos)
 	}
 }
 
-void movegen::pawn_promotions(const board& pos)
+void movegen::pawn_promo(const board& pos)
 {
-	uint64_t targets{shift(pos.pieces[pawns] & friends, push[ahead]) & ~pos.side[both] & legal_sq & promo_rank};
+	uint64_t targets = shift(pos.pieces[pawn] & friends & border_left, cap_left[ahead]) & legal_sq & promo_rank & enemies;
 	while (targets)
 	{
-		uint64_t target{1ULL << lsb(targets)};
-		const auto to_sq{lsb(targets)};
-		const auto from_sq{to_sq - push[back]};
+		uint64_t target = 1ULL << lsb(targets);
+		const auto to_sq = lsb(targets);
+		const auto from_sq = to_sq - cap_left[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target &= pinned[from_sq];
 		if (target)
 		{
-			for (int flag{15}; flag >= 12; --flag)
+			for (int flag = 15; flag >= 12; --flag)
 				movelist[move_cnt++] = encode(from_sq, to_sq, flag);
 		}
 
 		targets &= targets - 1;
 	}
 
-	targets = shift(pos.pieces[pawns] & friends & border_left, cap_left[ahead]) & legal_sq & promo_rank & enemies;
+	targets = shift(pos.pieces[pawn] & friends & border_right, cap_right[ahead]) & legal_sq & promo_rank & enemies;
 	while (targets)
 	{
-		uint64_t target{1ULL << lsb(targets)};
-		const auto to_sq{lsb(targets)};
-		const auto from_sq{to_sq - cap_left[back]};
+		uint64_t target = 1ULL << lsb(targets);
+		const auto to_sq = lsb(targets);
+		const auto from_sq = to_sq - cap_right[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target &= pinned[from_sq];
 		if (target)
 		{
-			for (int flag{15}; flag >= 12; --flag)
+			for (int flag = 15; flag >= 12; --flag)
 				movelist[move_cnt++] = encode(from_sq, to_sq, flag);
 		}
 
 		targets &= targets - 1;
 	}
 
-	targets = shift(pos.pieces[pawns] & friends & border_right, cap_right[ahead]) & legal_sq & promo_rank & enemies;
+	targets = shift(pos.pieces[pawn] & friends, push[ahead]) & ~pos.side[both] & legal_sq & promo_rank;
 	while (targets)
 	{
-		uint64_t target{1ULL << lsb(targets)};
-		const auto to_sq{lsb(targets)};
-		const auto from_sq{to_sq - cap_right[back]};
+		uint64_t target = 1ULL << lsb(targets);
+		const auto to_sq = lsb(targets);
+		const auto from_sq = to_sq - push[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target &= pinned[from_sq];
 		if (target)
 		{
-			for (int flag{15}; flag >= 12; --flag)
+			for (int flag = 15; flag >= 12; --flag)
 				movelist[move_cnt++] = encode(from_sq, to_sq, flag);
 		}
 
@@ -295,18 +295,18 @@ void movegen::pawn_promotions(const board& pos)
 	}
 }
 
-void movegen::pawn_quiet_moves(const board& pos)
+void movegen::pawn_quiet(const board& pos)
 {
-	const uint64_t pushes{shift(pos.pieces[pawns] & friends, push[ahead]) & ~pos.side[both] & ~promo_rank};
-	uint64_t targets{pushes & legal_sq};
+	const uint64_t pushes = shift(pos.pieces[pawn] & friends, push[ahead]) & ~pos.side[both] & ~promo_rank;
+	uint64_t targets = pushes & legal_sq;
 
 	while (targets)
 	{
-		uint64_t target{1ULL << lsb(targets)};
-		const auto to_sq{lsb(targets)};
-		const auto from_sq{to_sq - push[back]};
+		uint64_t target = 1ULL << lsb(targets);
+		const auto to_sq = lsb(targets);
+		const auto from_sq = to_sq - push[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target &= pinned[from_sq];
 		if (target)
@@ -315,14 +315,14 @@ void movegen::pawn_quiet_moves(const board& pos)
 		targets &= targets - 1;
 	}
 
-	uint64_t targets2x{shift(pushes & pawn_rank, push[ahead]) & legal_sq & ~pos.side[both]};
+	uint64_t targets2x = shift(pushes & pawn_rank, push[ahead]) & legal_sq & ~pos.side[both];
 	while (targets2x)
 	{
-		uint64_t target{1ULL << lsb(targets2x)};
-		const auto to_sq{lsb(targets2x)};
-		const auto from_sq{to_sq - double_push[back]};
+		uint64_t target = 1ULL << lsb(targets2x);
+		const auto to_sq = lsb(targets2x);
+		const auto from_sq = to_sq - double_push[back];
 
-		assert((1ULL << from_sq) & pos.pieces[pawns] & friends);
+		assert(1ULL << from_sq & pos.pieces[pawn] & friends);
 
 		target &= pinned[from_sq];
 		if (target)
@@ -332,157 +332,144 @@ void movegen::pawn_quiet_moves(const board& pos)
 	}
 }
 
-void movegen::piece_moves(const board& pos, const mvgen type)
+void movegen::piece_moves(const board& pos, const gentype type)
 {
 	uint64_t targets;
 
-	uint64_t pieces{pos.pieces[queens] & friends};
+	uint64_t pieces = pos.pieces[queen] & friends;
 	while (pieces)
 	{
-		const auto queen{lsb(pieces)};
-		targets = slider_attacks(bishop, queen, pos.side[both]) | slider_attacks(rook, queen, pos.side[both]);
-		targets &= gentype[type] & legal_sq & pinned[queen];
+		const auto sq = lsb(pieces);
+		targets = slider_attacks(bishop_slider, sq, pos.side[both]) | slider_attacks(rook_slider, sq, pos.side[both]);
+		targets &= gen_type[type] & legal_sq & pinned[sq];
 
 		while (targets)
 		{
-			movelist[move_cnt++] = encode(queen, lsb(targets), pos.piece_sq[lsb(targets)]);
+			movelist[move_cnt++] = encode(sq, lsb(targets), pos.piece_sq[lsb(targets)]);
 			targets &= targets - 1;
 		}
 		pieces &= pieces - 1;
 	}
 
-	pieces = pos.pieces[knights] & friends;
+	pieces = pos.pieces[knight] & friends;
 	while (pieces)
 	{
-		const auto knight{lsb(pieces)};
-		targets = knight_table[knight] & gentype[type] & legal_sq & pinned[knight];
+		const auto sq = lsb(pieces);
 
+		targets = knight_table[sq] & gen_type[type] & legal_sq & pinned[sq];
 		while (targets)
 		{
-			movelist[move_cnt++] = encode(knight, lsb(targets), pos.piece_sq[lsb(targets)]);
+			movelist[move_cnt++] = encode(sq, lsb(targets), pos.piece_sq[lsb(targets)]);
 			targets &= targets - 1;
 		}
 		pieces &= pieces - 1;
 	}
 
-	pieces = pos.pieces[bishops] & friends;
+	pieces = pos.pieces[bishop] & friends;
 	while (pieces)
 	{
-		const auto bishop_sq{lsb(pieces)};
-		targets = slider_attacks(bishop, bishop_sq, pos.side[both]) & gentype[type] & legal_sq & pinned[bishop_sq];
+		const auto sq = lsb(pieces);
 
+		targets = slider_attacks(bishop_slider, sq, pos.side[both]) & gen_type[type] & legal_sq & pinned[sq];
 		while (targets)
 		{
-			movelist[move_cnt++] = encode(bishop_sq, lsb(targets), pos.piece_sq[lsb(targets)]);
+			movelist[move_cnt++] = encode(sq, lsb(targets), pos.piece_sq[lsb(targets)]);
 			targets &= targets - 1;
 		}
 		pieces &= pieces - 1;
 	}
 
-	pieces = pos.pieces[rooks] & friends;
+	pieces = pos.pieces[rook] & friends;
 	while (pieces)
 	{
-		const auto rook_sq{lsb(pieces)};
+		const auto sq = lsb(pieces);
 
-		targets = slider_attacks(rook, rook_sq, pos.side[both]) & gentype[type] & legal_sq & pinned[rook_sq];
-
+		targets = slider_attacks(rook_slider, sq, pos.side[both]) & gen_type[type] & legal_sq & pinned[sq];
 		while (targets)
 		{
-			movelist[move_cnt++] = encode(rook_sq, lsb(targets), pos.piece_sq[lsb(targets)]);
+			movelist[move_cnt++] = encode(sq, lsb(targets), pos.piece_sq[lsb(targets)]);
 			targets &= targets - 1;
 		}
 		pieces &= pieces - 1;
 	}
 }
 
-void movegen::pin(const board& pos) const
+void movegen::pin(const board& pos)
 {
-	uint64_t single_ray[8]{0};
+	pin_cnt = 0;
+	const auto king_sq = pos.king_sq[pos.turn];
 
-	uint64_t attackers{slide_ray[rook][sq_king_fr] & enemies & (pos.pieces[rooks] | pos.pieces[queens])};
-	attackers |= slide_ray[bishop][sq_king_fr] & enemies & (pos.pieces[bishops] | pos.pieces[queens]);
+	uint64_t att = slide_ray[rook_slider][king_sq] & enemies & (pos.pieces[rook] | pos.pieces[queen]);
+	att |= slide_ray[bishop_slider][king_sq] & enemies & (pos.pieces[bishop] | pos.pieces[queen]);
 
-	while (attackers)
+	while (att)
 	{
-		uint64_t rays_att{slider_attacks(rook, static_cast<int>(sq_king_fr), attackers)};
-		rays_att |= slider_attacks(bishop, static_cast<int>(sq_king_fr), attackers);
+		uint64_t ray_to_att = slider_attacks(rook_slider, king_sq, att);
+		ray_to_att |= slider_attacks(bishop_slider, king_sq, att);
+		const uint64_t attacker = 1ULL << lsb(att);
 
-		uint64_t pinning_ray{0};
-		const uint64_t attacker{1ULL << lsb(attackers)};
-
-		if (!(attacker & rays_att))
+		if (!(attacker & ray_to_att))
 		{
-			attackers &= attackers - 1;
+			att &= att - 1;
 			continue;
 		}
 
-		assert(king_fr != 0);
-
-		if (std::all_of(single_ray, single_ray + 8, [](const uint64_t i) { return i == 0ULL; }))
+		assert(fr_king);
+		uint64_t x_ray = 0;
+		for (const auto dir : ray)
 		{
-			for (int dir{0}; dir < 8; ++dir)
+			auto flood = fr_king;
+			for (; !(flood & dir.border); flood |= shift(flood, dir.shift));
+
+			if (flood & attacker)
 			{
-				uint64_t flood{king_fr};
-				while (!(flood & ray[dir].border))
-				{
-					shift_real(flood, ray[dir].shift);
-					single_ray[dir] |= flood;
-				}
+				x_ray = flood & ray_to_att;
+				break;
 			}
 		}
 
-		for (const auto& s : single_ray)
-			if (s & attacker)
-			{
-				pinning_ray = s & rays_att;
-				break;
-			}
+		assert(x_ray & attacker);
+		assert(!(x_ray & fr_king));
 
-		assert(pinning_ray & attacker);
-
-		if (pinning_ray & friends && popcnt(pinning_ray & pos.side[both]) == 2)
+		if (x_ray & friends && popcnt(x_ray & pos.side[both]) == 2)
 		{
-			assert(popcnt(pinning_ray & friends) == 1);
-
-			pinned[lsb(pinning_ray & friends)] = pinning_ray;
-			pin_idx[pin_cnt++] = lsb(pinning_ray & friends);
+			assert(popcnt(x_ray & friends) == 1);
+			pinned[lsb(x_ray & friends)] = x_ray;
+			pin_idx[pin_cnt++] = lsb(x_ray & friends);
 		}
 
 		else if (pos.ep_square
-			&& pinning_ray & friends & pos.pieces[pawns]
-			&& pinning_ray & enemies & pos.pieces[pawns]
-			&& popcnt(pinning_ray & pos.side[both]) == 3)
+			&& x_ray & friends & pos.pieces[pawn]
+			&& x_ray & enemies & pos.pieces[pawn]
+			&& popcnt(x_ray & pos.side[both]) == 3)
 		{
-			assert(popcnt(pinning_ray & enemies) == 2);
-			uint64_t enemy_pawn{pinning_ray & enemies & pos.pieces[pawns]};
+			assert(popcnt(x_ray & enemies) == 2);
 
-			if ((pinning_ray & friends & pos.pieces[pawns]) << 1 == (pinning_ray & enemies & pos.pieces[pawns])
-				|| (pinning_ray & friends & pos.pieces[pawns]) >> 1 == (pinning_ray & enemies & pos.pieces[pawns]))
+			const uint64_t enemy_pawn = x_ray & enemies & pos.pieces[pawn];
+
+			if (const uint64_t friend_pawn = x_ray & friends & pos.pieces[pawn]; friend_pawn << 1 == enemy_pawn || friend_pawn >> 1 == enemy_pawn)
 			{
-				assert(popcnt(pinning_ray & enemies & pos.pieces[pawns]) == 1);
-
-				shift_real(enemy_pawn, push[pos.turn]);
-
-				if (pos.ep_square == enemy_pawn)
+				if (pos.ep_square == shift(enemy_pawn, push[pos.turn]))
 				{
-					pinned[lsb(pinning_ray & friends)] = ~enemy_pawn;
-					pin_idx[pin_cnt++] = lsb(pinning_ray & friends);
+					pinned[lsb(x_ray & friends)] = ~pos.ep_square;
+					pin_idx[pin_cnt++] = lsb(x_ray & friends);
 				}
 			}
 		}
-		attackers &= attackers - 1;
+
+		att &= att - 1;
 	}
 }
 
-uint64_t movegen::slider_attacks(const uint8_t sl, const int sq, uint64_t occ)
+uint64_t movegen::slider_attacks(const int sl, const int sq, uint64_t occ)
 {
 	assert(sq < 64 && sq >= 0);
-	assert(sl == rook || sl == bishop);
+	assert(sl == rook_slider || sl == bishop_slider);
 
-	occ &= magic::slider[sl][sq].mask;
-	occ *= magic::slider[sl][sq].magic;
-	occ >>= magic::slider[sl][sq].shift;
-	return attack_table[magic::slider[sl][sq].offset + occ];
+	occ &= slider[sl][sq].mask;
+	occ *= slider[sl][sq].magic;
+	occ >>= slider[sl][sq].shift;
+	return attack_table[slider[sl][sq].offset + occ];
 }
 
 void movegen::unpin()
@@ -490,7 +477,7 @@ void movegen::unpin()
 	if (pin_cnt != 0)
 	{
 		assert(pin_cnt <= 8);
-		for (int i{0}; i < pin_cnt; ++i)
+		for (int i = 0; i < pin_cnt; ++i)
 			pinned[pin_idx[i]] = 0xffffffffffffffff;
 	}
 }
