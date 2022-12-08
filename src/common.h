@@ -1,26 +1,10 @@
 #pragma once
+#include <iostream>
 #include <string>
 
-#pragma warning(disable: 4244)
-
-const std::string eng_name{ "Axon" };
-const std::string version { "0.1" };
-const std::string platform{ "x64" };
-
-constexpr int max_depth { 64 };
-constexpr int max_hash{ 1024 };
-constexpr int max_period { 1024 };
-constexpr int max_movegen { 256 };
-constexpr int max_movetime{ 0x7fffffff };
-
-constexpr uint8_t castleright[]{ 0x1, 0x4, 0x10, 0x40 };
-const std::string startpos{ "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 0" };
-
-inline uint16_t to_sq1(const uint16_t move) { return move & 0x3fU; }
-inline uint16_t to_sq2(const uint16_t move) { return (move & 0xfc0U) >> 6; }
-inline uint8_t to_flag(const uint16_t move) { return static_cast<uint8_t>(move >> 12); }
-inline uint64_t shift(const uint64_t b, const int shift) { return b << shift | b >> (64 - shift); }
-inline uint16_t encode(const uint32_t from, const uint32_t to, const int flag) { return static_cast<uint16_t>(from | to << 6 | flag << 12); }
+const std::string eng_name = "Axon";
+const std::string version = "0.2";
+const std::string platform = "x64";
 
 enum square
 {
@@ -34,6 +18,23 @@ enum square
 	h8, g8, f8, e8, d8, c8, b8, a8
 };
 
+enum files
+{
+	fh, fg, ff, fe, fd, fc, fb, fa
+};
+
+enum ranks
+{
+	r1,
+	r2,
+	r3,
+	r4,
+	r5,
+	r6,
+	r7,
+	r8
+};
+
 enum color
 {
 	white,
@@ -43,16 +44,16 @@ enum color
 
 enum piece
 {
-	pawns = 0,
-	rooks = 1,
-	knights = 2,
-	bishops = 3,
-	queens = 4,
-	kings = 5,
+	pawn = 0,
+	rook = 1,
+	knight = 2,
+	bishop = 3,
+	queen = 4,
+	king = 5,
 	no_piece = 6
 };
 
-enum pawn
+enum enp
 {
 	enpassant = 7,
 };
@@ -65,7 +66,7 @@ enum castle
 	black_queenside = 11
 };
 
-enum promote
+enum promotype
 {
 	promo_rook = 12,
 	promo_knight = 13,
@@ -88,7 +89,7 @@ enum hashtype
 	lower = 3
 };
 
-enum mvgen
+enum gentype
 {
 	quiets,
 	captures,
@@ -103,11 +104,12 @@ enum scoretype
 	ndef = 11000
 };
 
-enum slide
+enum slidertype
 {
-	rook,
-	bishop
+	rook_slider,
+	bishop_slider
 };
+
 enum stage
 {
 	mg,
@@ -121,3 +123,48 @@ enum state
 	stalemate,
 	isdraw
 };
+
+constexpr uint64_t file[]
+{
+	0x0101010101010101, 0x0202020202020202, 0x0404040404040404, 0x0808080808080808,
+	0x1010101010101010, 0x2020202020202020, 0x4040404040404040, 0x8080808080808080
+};
+
+constexpr uint64_t rank[]
+{
+	0x00000000000000ff, 0x000000000000ff00, 0x0000000000ff0000, 0x00000000ff000000,
+	0x000000ff00000000, 0x0000ff0000000000, 0x00ff000000000000, 0xff00000000000000
+};
+
+constexpr int max_depth = 64;
+constexpr int max_hash = 1024;
+constexpr int max_movetime = 0x7fffffff;
+constexpr int max_movegen = 256;
+constexpr int max_period = 1024;
+constexpr uint8_t castleright[]{ 0x1, 0x4, 0x10, 0x40 };
+const std::string startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 0";
+
+inline uint64_t shift(const uint64_t bb, const int shift)
+{
+	return bb << shift | bb >> (64 - shift);
+}
+
+inline uint16_t encode(const uint32_t from, const uint32_t to, const int flag)
+{
+	return static_cast<uint16_t>(from | to << 6 | flag << 12);
+}
+
+inline uint16_t to_sq1(const uint16_t move)
+{
+	return move & 0x3fU;
+}
+
+inline uint16_t to_sq2(const uint16_t move)
+{
+	return (move & 0xfc0U) >> 6;
+}
+
+inline uint8_t to_flag(const uint16_t move)
+{
+	return static_cast<uint8_t>(move >> 12);
+}
