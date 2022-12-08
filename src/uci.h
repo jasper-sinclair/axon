@@ -4,9 +4,9 @@
 
 namespace uci
 {
-	void loop();
-	void uci();
 	void isready();
-	void stop(std::thread& searching);
+	void loop();
 	void search(board* pos, timemanager* chrono);
+	void stop(std::thread& searching);
+	void uci();
 }

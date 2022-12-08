@@ -7,12 +7,13 @@ public:
 	timemanager() : time{0}, incr{0}, moves_to_go{50}
 	{
 	}
-	int time[2];
+
+	bool movetime_is_set{};
+	int get_movetime(int turn);
 	int incr[2];
 	int moves_to_go;
 	int movetime{};
-	bool movetime_is_set{};
-	int get_movetime(int turn);
+	int time[2];
 	void set_movetime(int new_time);
 };
 
