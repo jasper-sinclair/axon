@@ -14,7 +14,7 @@ void uci::loop()
 	std::thread searching;
 	board pos{};
 	pos.parse_fen(startpos);
-
+	engine::new_game(pos, clock);
 	do
 	{
 		std::getline(std::cin, line);
